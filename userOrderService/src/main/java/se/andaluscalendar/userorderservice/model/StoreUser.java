@@ -5,6 +5,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Data;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -18,4 +19,5 @@ public class StoreUser {
     private String firstName;
     private String lastName;
     private String role;
+    private LocalDateTime createdAt;
 }
