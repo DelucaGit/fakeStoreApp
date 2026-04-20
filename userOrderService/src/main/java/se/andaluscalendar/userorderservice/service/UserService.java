@@ -8,6 +8,8 @@ import se.andaluscalendar.userorderservice.dto.user.registration.UserRegistratio
 import se.andaluscalendar.userorderservice.model.StoreUser;
 import se.andaluscalendar.userorderservice.repository.UserRepository;
 
+import java.util.UUID;
+
 @Service
 public class UserService {
     private final UserRepository userRepository;
@@ -41,5 +43,17 @@ public class UserService {
                 savedUser.getRole(),
                 savedUser.getCreatedAt()
         );
+    }
+
+    public UserResponse getUserById(UUID id){
+        return userRepository.findById(id)
+                .map(user -> new UserResponse(
+                        user.getId(),
+                        user.getEmail(),
+                        user.getFirstName(),
+                        user.getLastName(),
+                        user.getRole(),
+                        user.getCreatedAt()
+                )).orElseThrow(() -> new RuntimeException("The user wasn't found"));
     }
 }
