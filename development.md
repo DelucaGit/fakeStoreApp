@@ -31,3 +31,8 @@ Link to the post: linkedin.com/posts/nicholas-ocket_it-turns-out-that-flyway-and
 * The function that fetches the user data uses the user id to fetch it, instead of the user email because the user email might contain first name and last name and that data will be sent through the URL bar and might be stored in the browsers history. An UUID is harder to understand who it might belong to.
 * Although we use the user email to check if another user has the same email when registering.
 * User password is hashed using BCrypt and the hashed version is saved in the database.
+
+# 21 April 2026
+* Added a test layer on UserService.
+* Ran test on the user registration function and user fetching function.
+* Tests were succesful. 
