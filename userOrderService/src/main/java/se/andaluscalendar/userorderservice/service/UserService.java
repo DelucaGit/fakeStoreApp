@@ -7,6 +7,7 @@ import se.andaluscalendar.userorderservice.dto.user.UserResponse;
 import se.andaluscalendar.userorderservice.dto.user.registration.UserRegistrationRequest;
 import se.andaluscalendar.userorderservice.model.StoreUser;
 import se.andaluscalendar.userorderservice.repository.UserRepository;
+import se.andaluscalendar.userorderservice.util.JwtUtil;
 
 import java.util.UUID;
 
@@ -35,13 +36,16 @@ public class UserService {
         // JPA sends back the same user but this time it has an ID and createdAt
         StoreUser savedUser = userRepository.save(newUser);
 
+        String token = JwtUtil.generateToken(savedUser.getId().toString());
+
         return new UserResponse(
                 savedUser.getId(),
                 savedUser.getEmail(),
                 savedUser.getFirstName(),
                 savedUser.getLastName(),
                 savedUser.getRole(),
-                savedUser.getCreatedAt()
+                savedUser.getCreatedAt(),
+                token
         );
     }
 
@@ -53,7 +57,8 @@ public class UserService {
                         user.getFirstName(),
                         user.getLastName(),
                         user.getRole(),
-                        user.getCreatedAt()
+                        user.getCreatedAt(),
+                        null
                 )).orElseThrow(() -> new RuntimeException("The user wasn't found"));
     }
 }

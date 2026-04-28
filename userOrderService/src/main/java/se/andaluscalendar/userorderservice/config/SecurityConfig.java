@@ -34,9 +34,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.
                         sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(registerEndpoint).permitAll()
-                        .requestMatchers(HttpMethod.GET, fetchEndpoint).permitAll()
-                        .anyRequest().authenticated());
+                        // API Gateway/Lambda handles the security gatekeeping,
+                        // so we permit requests that reach this service
+                        .anyRequest().permitAll());
 
         return http.build();
     }
