@@ -15,10 +15,12 @@ import java.util.UUID;
 public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.jwtUtil = jwtUtil;
     }
 
     public UserResponse registerUser(UserRegistrationRequest request){
@@ -36,7 +38,7 @@ public class UserService {
         // JPA sends back the same user but this time it has an ID and createdAt
         StoreUser savedUser = userRepository.save(newUser);
 
-        String token = JwtUtil.generateToken(savedUser.getId().toString());
+        String token = jwtUtil.generateToken(savedUser.getId().toString());
 
         return new UserResponse(
                 savedUser.getId(),
