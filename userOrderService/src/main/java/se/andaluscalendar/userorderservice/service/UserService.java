@@ -8,6 +8,7 @@ import se.andaluscalendar.userorderservice.dto.user.registration.UserRegistratio
 import se.andaluscalendar.userorderservice.model.StoreUser;
 import se.andaluscalendar.userorderservice.repository.UserRepository;
 import se.andaluscalendar.userorderservice.util.JwtUtil;
+import se.andaluscalendar.userorderservice.exception.UserNotFoundException;
 
 import java.util.UUID;
 
@@ -61,6 +62,6 @@ public class UserService {
                         user.getRole(),
                         user.getCreatedAt(),
                         null
-                )).orElseThrow(() -> new RuntimeException("The user wasn't found"));
+                )).orElseThrow(() -> new UserNotFoundException("The user with the provided ID wasn't found"));
     }
 }
