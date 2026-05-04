@@ -18,6 +18,7 @@ public record UserResponse(
         String lastName,
         String role,
         LocalDateTime createdAt,
-        String token
+        String accessToken,
+        String refreshToken
 ) {
 }
