@@ -3,12 +3,14 @@ package se.andaluscalendar.userorderservice.service;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import se.andaluscalendar.userorderservice.dto.auth.AuthTokensResponse;
 import se.andaluscalendar.userorderservice.dto.user.UserResponse;
+import se.andaluscalendar.userorderservice.dto.user.login.UserLoginRequest;
 import se.andaluscalendar.userorderservice.dto.user.registration.UserRegistrationRequest;
+import se.andaluscalendar.userorderservice.exception.UnauthorizedException;
+import se.andaluscalendar.userorderservice.exception.UserNotFoundException;
 import se.andaluscalendar.userorderservice.model.StoreUser;
 import se.andaluscalendar.userorderservice.repository.UserRepository;
-import se.andaluscalendar.userorderservice.util.JwtUtil;
-import se.andaluscalendar.userorderservice.exception.UserNotFoundException;
 
 import java.util.UUID;
 
@@ -16,12 +18,12 @@ import java.util.UUID;
 public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JwtUtil jwtUtil;
+    private final AuthTokenService authTokenService;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, AuthTokenService authTokenService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.jwtUtil = jwtUtil;
+        this.authTokenService = authTokenService;
     }
 
     public UserResponse registerUser(UserRegistrationRequest request){
@@ -38,18 +40,18 @@ public class UserService {
 
         // JPA sends back the same user but this time it has an ID and createdAt
         StoreUser savedUser = userRepository.save(newUser);
+        return mapUserWithFreshTokens(savedUser);
+    }
 
-        String token = jwtUtil.generateToken(savedUser.getId().toString());
+    public UserResponse loginUser(UserLoginRequest request) {
+        StoreUser user = userRepository.findByEmail(request.email())
+                .orElseThrow(() -> new UnauthorizedException("Invalid email or password"));
 
-        return new UserResponse(
-                savedUser.getId(),
-                savedUser.getEmail(),
-                savedUser.getFirstName(),
-                savedUser.getLastName(),
-                savedUser.getRole(),
-                savedUser.getCreatedAt(),
-                token
-        );
+        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            throw new UnauthorizedException("Invalid email or password");
+        }
+
+        return mapUserWithFreshTokens(user);
     }
 
     public UserResponse getUserById(UUID id){
@@ -61,7 +63,22 @@ public class UserService {
                         user.getLastName(),
                         user.getRole(),
                         user.getCreatedAt(),
+                        null,
                         null
                 )).orElseThrow(() -> new UserNotFoundException("The user with the provided ID wasn't found"));
+    }
+
+    private UserResponse mapUserWithFreshTokens(StoreUser user) {
+        AuthTokensResponse authTokens = authTokenService.issueTokensForUser(user);
+        return new UserResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getRole(),
+                user.getCreatedAt(),
+                authTokens.accessToken(),
+                authTokens.refreshToken()
+        );
     }
 }

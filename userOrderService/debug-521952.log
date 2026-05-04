@@ -1,0 +1,1 @@
+{"sessionId":"521952","runId":"startup-debug","hypothesisId":"H2","location":"UserOrderServiceApplication.java:14","message":"Starting app with DB env snapshot","data":{"dbUserLocalSet":true,"dbUrlLocalSet":true,"jwtAccessSet":false,"jwtRefreshSet":false},"timestamp":1777894908153}
