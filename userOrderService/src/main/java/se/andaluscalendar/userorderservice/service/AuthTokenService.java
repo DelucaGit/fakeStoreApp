@@ -5,6 +5,7 @@ import io.jsonwebtoken.JwtException;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 import se.andaluscalendar.userorderservice.dto.auth.AuthTokensResponse;
+import se.andaluscalendar.userorderservice.exception.UnauthorizedException;
 import se.andaluscalendar.userorderservice.model.RefreshToken;
 import se.andaluscalendar.userorderservice.model.StoreUser;
 import se.andaluscalendar.userorderservice.repository.RefreshTokenRepository;
@@ -42,39 +43,39 @@ public class AuthTokenService {
     @Transactional
     public AuthTokensResponse refreshTokens(String rawRefreshToken) {
         if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
-            throw new IllegalArgumentException("Refresh token is required");
+            throw new UnauthorizedException("Refresh token is required");
         }
 
         Claims claims;
         try {
             claims = jwtUtil.validateAndExtractRefreshClaims(rawRefreshToken);
         } catch (JwtException | IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid refresh token");
+            throw new UnauthorizedException("Invalid refresh token");
         }
 
         UUID userId;
         try {
             userId = UUID.fromString(claims.getSubject());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid refresh token subject");
+            throw new UnauthorizedException("Invalid refresh token subject");
         }
         String tokenHash = hashToken(rawRefreshToken);
 
         RefreshToken existingToken = refreshTokenRepository.findByTokenHashAndRevokedFalse(tokenHash)
-                .orElseThrow(() -> new IllegalArgumentException("Refresh token is invalid or revoked"));
+                .orElseThrow(() -> new UnauthorizedException("Refresh token is invalid or revoked"));
 
         if (existingToken.getExpiresAt().isBefore(LocalDateTime.now())) {
             existingToken.setRevoked(true);
             refreshTokenRepository.save(existingToken);
-            throw new IllegalArgumentException("Refresh token has expired");
+            throw new UnauthorizedException("Refresh token has expired");
         }
 
         if (!existingToken.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("Refresh token does not belong to this user");
+            throw new UnauthorizedException("Refresh token does not belong to this user");
         }
 
         StoreUser user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new UnauthorizedException("User not found"));
 
         String newRefreshToken = jwtUtil.generateRefreshToken(user.getId().toString());
         String newRefreshHash = hashToken(newRefreshToken);
@@ -87,6 +88,56 @@ public class AuthTokenService {
 
         String newAccessToken = jwtUtil.generateAccessToken(user.getId().toString());
         return new AuthTokensResponse(newAccessToken, newRefreshToken);
+    }
+
+    @Transactional
+    public void logout(String authorizationHeader) {
+        String rawRefreshToken = extractBearerToken(authorizationHeader);
+        Claims claims;
+        try {
+            claims = jwtUtil.validateAndExtractRefreshClaims(rawRefreshToken);
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new UnauthorizedException("Invalid refresh token");
+        }
+
+        String tokenHash = hashToken(rawRefreshToken);
+        RefreshToken existingToken = refreshTokenRepository.findByTokenHashAndRevokedFalse(tokenHash)
+                .orElseThrow(() -> new UnauthorizedException("Refresh token is invalid or revoked"));
+
+        if (existingToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+            existingToken.setRevoked(true);
+            refreshTokenRepository.save(existingToken);
+            throw new UnauthorizedException("Refresh token has expired");
+        }
+
+        UUID tokenUserId;
+        try {
+            tokenUserId = UUID.fromString(claims.getSubject());
+        } catch (IllegalArgumentException e) {
+            throw new UnauthorizedException("Invalid refresh token subject");
+        }
+
+        if (!existingToken.getUserId().equals(tokenUserId)) {
+            throw new UnauthorizedException("Refresh token does not belong to this user");
+        }
+
+        existingToken.setRevoked(true);
+        refreshTokenRepository.save(existingToken);
+    }
+
+    private String extractBearerToken(String authorizationHeader) {
+        if (authorizationHeader == null || authorizationHeader.isBlank()) {
+            throw new UnauthorizedException("Authorization header is required");
+        }
+        if (!authorizationHeader.startsWith("Bearer ")) {
+            throw new UnauthorizedException("Authorization header must use Bearer token");
+        }
+
+        String token = authorizationHeader.substring(7).trim();
+        if (token.isBlank()) {
+            throw new UnauthorizedException("Bearer token is missing");
+        }
+        return token;
     }
 
     private void persistRefreshToken(UUID userId, String rawRefreshToken) {

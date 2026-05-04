@@ -5,7 +5,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import se.andaluscalendar.userorderservice.dto.auth.AuthTokensResponse;
 import se.andaluscalendar.userorderservice.dto.user.UserResponse;
+import se.andaluscalendar.userorderservice.dto.user.login.UserLoginRequest;
 import se.andaluscalendar.userorderservice.dto.user.registration.UserRegistrationRequest;
+import se.andaluscalendar.userorderservice.exception.UnauthorizedException;
 import se.andaluscalendar.userorderservice.exception.UserNotFoundException;
 import se.andaluscalendar.userorderservice.model.StoreUser;
 import se.andaluscalendar.userorderservice.repository.UserRepository;
@@ -38,18 +40,18 @@ public class UserService {
 
         // JPA sends back the same user but this time it has an ID and createdAt
         StoreUser savedUser = userRepository.save(newUser);
-        AuthTokensResponse authTokens = authTokenService.issueTokensForUser(savedUser);
+        return mapUserWithFreshTokens(savedUser);
+    }
 
-        return new UserResponse(
-                savedUser.getId(),
-                savedUser.getEmail(),
-                savedUser.getFirstName(),
-                savedUser.getLastName(),
-                savedUser.getRole(),
-                savedUser.getCreatedAt(),
-                authTokens.accessToken(),
-                authTokens.refreshToken()
-        );
+    public UserResponse loginUser(UserLoginRequest request) {
+        StoreUser user = userRepository.findByEmail(request.email())
+                .orElseThrow(() -> new UnauthorizedException("Invalid email or password"));
+
+        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            throw new UnauthorizedException("Invalid email or password");
+        }
+
+        return mapUserWithFreshTokens(user);
     }
 
     public UserResponse getUserById(UUID id){
@@ -64,5 +66,19 @@ public class UserService {
                         null,
                         null
                 )).orElseThrow(() -> new UserNotFoundException("The user with the provided ID wasn't found"));
+    }
+
+    private UserResponse mapUserWithFreshTokens(StoreUser user) {
+        AuthTokensResponse authTokens = authTokenService.issueTokensForUser(user);
+        return new UserResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getRole(),
+                user.getCreatedAt(),
+                authTokens.accessToken(),
+                authTokens.refreshToken()
+        );
     }
 }
