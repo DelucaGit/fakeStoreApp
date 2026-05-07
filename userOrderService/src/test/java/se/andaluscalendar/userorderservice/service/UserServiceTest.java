@@ -8,30 +8,35 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import se.andaluscalendar.userorderservice.dto.auth.AuthTokensResponse;
 import se.andaluscalendar.userorderservice.dto.user.UserResponse;
+import se.andaluscalendar.userorderservice.dto.user.login.UserLoginRequest;
 import se.andaluscalendar.userorderservice.dto.user.registration.UserRegistrationRequest;
+import se.andaluscalendar.userorderservice.exception.UnauthorizedException;
+import se.andaluscalendar.userorderservice.exception.UserNotFoundException;
 import se.andaluscalendar.userorderservice.model.StoreUser;
 import se.andaluscalendar.userorderservice.repository.UserRepository;
-import se.andaluscalendar.userorderservice.util.JwtUtil;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-public class UserServiceTest {
+class UserServiceTest {
 
     @Mock
-    private  UserRepository userRepository;
+    private UserRepository userRepository;
     @Mock
-    private  PasswordEncoder passwordEncoder;
+    private PasswordEncoder passwordEncoder;
     @Mock
-    private JwtUtil jwtUtil;
+    private AuthTokenService authTokenService;
 
     @InjectMocks
     private UserService userService;
@@ -60,7 +65,8 @@ public class UserServiceTest {
                     thenReturn(Optional.empty());
             when(passwordEncoder.encode(anyString())).thenReturn("hashed_pass");
             when(userRepository.save(any(StoreUser.class))).thenReturn(savedUser);
-            when(jwtUtil.generateToken(anyString())).thenReturn("mocked.jwt.token");
+            when(authTokenService.issueTokensForUser(any(StoreUser.class)))
+                    .thenReturn(new AuthTokensResponse("mocked.access.token", "mocked.refresh.token"));
 
             // Act
             UserResponse response = userService.registerUser(request);
@@ -68,7 +74,8 @@ public class UserServiceTest {
             // Assert
             assertNotNull(response.id());
             assertEquals("ny@test.com", response.email());
-            assertEquals("mocked.jwt.token", response.token());
+            assertEquals("mocked.access.token", response.accessToken());
+            assertEquals("mocked.refresh.token", response.refreshToken());
         }
 
         @Test
@@ -97,6 +104,47 @@ public class UserServiceTest {
 
 
     }
+
+    @Nested
+    class UserLogin {
+        @Test
+        @DisplayName("Test/ Login user if credentials are valid")
+        void whenLoginUser_andCredentialsAreValid_ThenReturnTokens() {
+            UserLoginRequest request = new UserLoginRequest("login@test.com", "password123");
+            StoreUser existingUser = new StoreUser();
+            existingUser.setId(UUID.randomUUID());
+            existingUser.setEmail("login@test.com");
+            existingUser.setPasswordHash("hashed_password");
+            existingUser.setRole("USER");
+            existingUser.setCreatedAt(LocalDateTime.now());
+
+            when(userRepository.findByEmail(request.email())).thenReturn(Optional.of(existingUser));
+            when(passwordEncoder.matches(request.password(), existingUser.getPasswordHash())).thenReturn(true);
+            when(authTokenService.issueTokensForUser(existingUser))
+                    .thenReturn(new AuthTokensResponse("new.access.token", "new.refresh.token"));
+
+            UserResponse response = userService.loginUser(request);
+
+            assertEquals(existingUser.getId(), response.id());
+            assertEquals("new.access.token", response.accessToken());
+            assertEquals("new.refresh.token", response.refreshToken());
+        }
+
+        @Test
+        @DisplayName("Test/ Throw exception when password is invalid")
+        void whenLoginUser_andPasswordIsInvalid_ThenThrowUnauthorized() {
+            UserLoginRequest request = new UserLoginRequest("login@test.com", "wrong-password");
+            StoreUser existingUser = new StoreUser();
+            existingUser.setPasswordHash("hashed_password");
+
+            when(userRepository.findByEmail(request.email())).thenReturn(Optional.of(existingUser));
+            when(passwordEncoder.matches(request.password(), existingUser.getPasswordHash())).thenReturn(false);
+
+            UnauthorizedException exception = assertThrows(UnauthorizedException.class, () -> userService.loginUser(request));
+            assertEquals("Invalid email or password", exception.getMessage());
+        }
+    }
+
     @Nested
     class UserFetching{
         @Test
@@ -124,12 +172,10 @@ public class UserServiceTest {
             when(userRepository.findById(fakeId)).thenReturn(Optional.empty());
 
             // Act
-            RuntimeException exception = assertThrows(RuntimeException.class, () -> {
-                userService.getUserById(fakeId);
-            });
+            UserNotFoundException exception = assertThrows(UserNotFoundException.class, () -> userService.getUserById(fakeId));
 
             // Assert
-            assertEquals("The user wasn't found", exception.getMessage());
+            assertEquals("The user with the provided ID wasn't found", exception.getMessage());
         }
     }
 

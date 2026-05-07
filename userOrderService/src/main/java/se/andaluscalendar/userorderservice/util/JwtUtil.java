@@ -65,4 +65,18 @@ public class JwtUtil {
         }
         return claims;
     }
+
+    public Claims validateAndExtractAccessClaims(String accessToken) {
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(accessKey)
+                .build()
+                .parseClaimsJws(accessToken)
+                .getBody();
+
+        String tokenType = claims.get("token_type", String.class);
+        if (!"access".equals(tokenType)) {
+            throw new JwtException("Invalid token type");
+        }
+        return claims;
+    }
 }
