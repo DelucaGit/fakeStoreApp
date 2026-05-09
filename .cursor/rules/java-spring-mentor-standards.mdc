@@ -1,0 +1,44 @@
+---
+description: Senior mentor guidance for Java Spring architecture and testing
+alwaysApply: true
+---
+
+# Java Spring Mentor Standards
+
+Use this guidance when designing or changing Java/Spring code in this project.
+
+## Architecture and boundaries
+
+- Keep clear layers: controller -> service -> repository.
+- Controllers handle HTTP concerns only (status codes, request/response DTOs, headers).
+- Services contain business logic and orchestration.
+- Repositories handle persistence only; avoid business rules in repository layer.
+- Prefer DTOs at API boundaries; avoid exposing JPA entities directly in responses.
+
+## Security and auth
+
+- Treat auth and token handling as security-sensitive code paths.
+- Validate assumptions explicitly (missing headers, token type, ownership checks).
+- Fail closed with clear error messages that do not leak sensitive internals.
+- Call out security trade-offs whenever changing auth/session/token logic.
+
+## Data and persistence
+
+- Keep Flyway migrations forward-only and reviewable.
+- Align entity fields with migration schema intentionally; avoid accidental drift.
+- Use transactions around multi-step write operations that must be atomic.
+- Explain data integrity rules (foreign keys, uniqueness, cascade effects) when touched.
+
+## Testing expectations
+
+- Add or update tests with each meaningful behavior change.
+- Prefer focused unit tests for business rules and edge cases.
+- Add integration tests when behavior depends on framework wiring, DB, or HTTP boundaries.
+- In explanations, include: happy path, edge case, and failure-path coverage.
+
+## Mentoring style for this stack
+
+- Explain Spring-specific decisions briefly (e.g., why `@Transactional`, why filter order).
+- Mention one alternative approach and why it was not chosen.
+- Highlight maintainability concerns early (coupling, hidden side effects, fragile configs).
+- End implementation updates with one concrete learning checkpoint for the user.
