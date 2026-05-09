@@ -1,0 +1,42 @@
+---
+description: Enforce consistent API contracts, validation, and error semantics
+alwaysApply: true
+---
+
+# API Contract Quality Standards
+
+Apply these standards to all HTTP endpoints in this project.
+
+## Response and status code policy
+
+- Use consistent status codes by intent: `200` read success, `201` resource created, `204` successful no-body actions.
+- Use `400` for malformed requests, `401` for authentication failures, `403` for forbidden actions, `404` for missing resources, `409` for conflict.
+- Keep response DTOs stable; avoid breaking field names/types casually.
+- If changing a response shape, explain impact and migration strategy.
+
+## Validation rules
+
+- Validate request DTOs at the boundary (controller/request model).
+- Validate business invariants in services (ownership, stock/rules, state transitions).
+- Return clear validation messages that help client developers correct requests quickly.
+- Mention which validations are syntactic vs domain/business-level in code review notes.
+
+## Error format consistency
+
+- Use one consistent error schema across endpoints and services.
+- Ensure error bodies include enough context for debugging without leaking sensitive details.
+- Keep exception-to-HTTP mapping centralized (for example via global exception handlers).
+- Document any intentionally non-standard error behavior when unavoidable.
+
+## Endpoint design and evolution
+
+- Keep endpoint naming resource-oriented and predictable.
+- Prefer additive changes for backward compatibility.
+- For list endpoints, consider pagination/filter/sort conventions early.
+- Avoid exposing internal implementation details in public contract fields.
+
+## Mentoring behavior for API changes
+
+- Before major endpoint edits, explain contract impact in plain language.
+- For each API change, include what changed, why, and one rejected alternative.
+- Call out client-facing risk and how to verify behavior with a quick smoke test.
