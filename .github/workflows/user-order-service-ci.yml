@@ -1,0 +1,120 @@
+name: User Order Service CI/CD
+
+on:
+  push:
+    paths:
+      - "userOrderService/**"
+      - ".github/workflows/user-order-service-ci.yml"
+  pull_request:
+    paths:
+      - "userOrderService/**"
+      - ".github/workflows/user-order-service-ci.yml"
+
+concurrency:
+  group: user-order-service-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SERVICE_DIR: userOrderService
+  IMAGE_NAME: cloudstore-user-order-service
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: userOrderService
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: userorder_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d userorder_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_URL_LOCAL: jdbc:postgresql://localhost:5432/userorder_ci
+      DB_USERNAME_LOCAL: ci
+      DB_PASSWORD_LOCAL: ci
+      AUTH_ENDPOINT_REGISTER: /api/users/register
+      AUTH_ENDPOINT_USER_FETCH: /api/users/**
+      JWT_SECRET_KEY: ci-test-jwt-secret-key-min-32-chars-long!!
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: userOrderService/pom.xml
+
+      - name: Maven verify
+        run: chmod +x mvnw && ./mvnw -B verify
+
+  docker:
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        working-directory: userOrderService
+        run: docker build -t "${{ env.IMAGE_NAME }}:${{ github.sha }}" .
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push image to Docker Hub
+        if: github.event_name == 'push'
+        working-directory: userOrderService
+        run: |
+          docker tag "${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+            "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            docker tag "${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+              "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+            docker push "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+          fi
+
+  deploy-ec2:
+    needs: docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.USER_ORDER_EC2_HOST }}
+          username: ${{ secrets.USER_ORDER_EC2_USER }}
+          key: ${{ secrets.USER_ORDER_EC2_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+            docker pull "$IMAGE"
+            docker stop cloudstore-user-order || true
+            docker rm cloudstore-user-order || true
+            docker run -d \
+              --name cloudstore-user-order \
+              -p 8080:8080 \
+              --restart unless-stopped \
+              --env-file /opt/cloudstore/user-order.env \
+              "$IMAGE"
