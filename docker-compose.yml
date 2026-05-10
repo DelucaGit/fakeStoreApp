@@ -1,0 +1,63 @@
+name: cloudstore
+
+# Load secrets from .env (copy .env.example). Do not commit .env.
+
+# Service hostnames on the Compose network:
+# - postgres
+# - product-service (user-order calls http://product-service:8082)
+# - user-order-service
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cloudstore}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env — see .env.example}
+      POSTGRES_DB: ${POSTGRES_DB:-users_and_orders_db}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  product-service:
+    build: ./productService
+    ports:
+      - "8082:8082"
+    environment:
+      DB_URL_LOCAL: jdbc:postgresql://postgres:5432/product_db
+      DB_USERNAME_LOCAL: ${POSTGRES_USER:-cloudstore}
+      DB_PASSWORD_LOCAL: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env — see .env.example}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  user-order-service:
+    build: ./userOrderService
+    ports:
+      - "8080:8080"
+    environment:
+      # Host "postgres" is the DB container name; port 5432 is inside the Compose network (not 5433).
+      DB_URL_LOCAL: jdbc:postgresql://postgres:5432/users_and_orders_db
+      DB_USERNAME_LOCAL: ${POSTGRES_USER:-cloudstore}
+      DB_PASSWORD_LOCAL: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env — see .env.example}
+      AUTH_ENDPOINT_REGISTER: ${AUTH_ENDPOINT_REGISTER:?Set AUTH_ENDPOINT_REGISTER in .env — see .env.example}
+      AUTH_ENDPOINT_USER_FETCH: ${AUTH_ENDPOINT_USER_FETCH:?Set AUTH_ENDPOINT_USER_FETCH in .env — see .env.example}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env — see .env.example}
+      PRODUCT_SERVICE_BASE_URL: ${PRODUCT_SERVICE_BASE_URL:-http://product-service:8082}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      product-service:
+        condition: service_started
+
+volumes:
+  postgres_data:

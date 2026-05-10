@@ -3,8 +3,8 @@ Inlämningsuppgift - Molnbaserad Javaapplikation
 Projekt: CloudStore
 
 Statusnyckel:
-- [x] Klar
-- [ ] Kvar
+- [ ] Klar
+- [x] Kvar
 
 Projektbeskrivning:
 I detta projekt ska ni bygga en forenklad e-handelsapplikation.
@@ -20,8 +20,8 @@ Fokus i projektet ligger pa att utveckla, testa och driftsatta en molnbaserad ap
 
 ### Applikation
 - [x] Backend ska byggas i Java med Spring Boot
-- [ ] Applikationen ska ha bade frontend och backend
-- [ ] Frontend kan byggas med Thymeleaf
+- [x] Applikationen ska ha bade frontend och backend
+- [ ] Frontend kan byggas med Thymeleaf (ej anvant; separat React-frontend i `frontend/`)
 - [x] Applikationen ska integrera med FakeStore API for produkter
 
 ### Autentisering
@@ -34,28 +34,28 @@ Fokus i projektet ligger pa att utveckla, testa och driftsatta en molnbaserad ap
 
 ### Tester
 - [x] Projektet ska innehalla automatiska tester for karnfunktionalitet
-- [ ] Tester ska koras automatiskt i CI-pipelinen
+- [x] Tester ska koras automatiskt i CI-pipelinen (GitHub Actions per mikrotjanst)
 
 ### CI (Continuous Integration)
 CI-pipelinen ska vid varje commit:
-- [ ] bygga projektet
-- [ ] kora tester
-- [ ] skapa en Docker image och lagra den i Dockerhub
+- [x] bygga projektet (`mvn verify` nar respektive tjansts sokvagar andrats)
+- [x] kora tester
+- [x] skapa en Docker image och lagra den i Dockerhub (vid `push`, nar Docker Hub-secrets ar satta)
 
 ### Docker
 Projektet ska innehalla:
-- [ ] en Dockerfile for backendapplikationen
-- [ ] en docker-compose konfiguration
+- [x] en Dockerfile for backendapplikationen (en per tjanst: `userOrderService/Dockerfile`, `productService/Dockerfile`)
+- [x] en docker-compose konfiguration (`fakeStoreApp/docker-compose.yml`)
 
 docker-compose ska starta upp:
-- [ ] backend
-- [ ] en databas (exempelvis MySQL)
+- [x] backend (bada tjanster)
+- [x] en databas (PostgreSQL i Compose; kursmall namner MySQL som exempel)
 
-- [ ] Den lokala miljoen ska efterlikna produktionsmiljoen sa mycket som mojligt
+- [x] Den lokala miljoen ska efterlikna produktionsmiljoen sa mycket som mojligt (samma typer av miljovariabler via `.env`)
 
 ### Deployment
 Applikationen ska:
-- [ ] deployas till AWS EC2
+- [ ] deployas till AWS EC2 (workflow finns; verifiera nar instanser ar klara)
 - [ ] vara tillganglig via internet
 
 ### HTTPS
@@ -66,7 +66,7 @@ Applikationen ska:
 Utöver allt i G ska du:
 
 ### Frontend
-- [ ] Frontend ska byggas med ett frontendramverk (React, Vue eller Angular)
+- [x] Frontend ska byggas med ett frontendramverk (React, Vue eller Angular) (`frontend/`: React + Vite)
 
 ### Mikrotjanster
 - [x] Applikationen ska delas upp i minst tva tjanster
@@ -75,89 +75,72 @@ Utöver allt i G ska du:
 
 ### Servicekommunikation
 - [x] Tjansterna ska kommunicera via HTTP
-- [ ] Autentisering mellan tjanster ska ske med JWT
+- [ ] Autentisering mellan tjanster ska ske med JWT (`ProductServiceClient` anropar utan Bearer/JWT an idag)
 
 ### Infrastruktur
 - [ ] Tjansterna ska deployas pa separata EC2-instanser
 
 ### CI/CD
 CI/CD-pipelinen ska:
-- [ ] bygga applikationen
-- [ ] kora tester
-- [ ] skapa Docker images och deploya till Dockerhub
-- [ ] deploya appen till AWS
+- [x] bygga applikationen
+- [x] kora tester
+- [x] skapa Docker images och deploya till Dockerhub
+- [ ] deploya appen till AWS (deploy-steg i workflow; kraver EC2 + secrets + miljo pa server)
 
 Lamna in lank till repot pa Learnpoint och lank till er sida.
 
 ## Current Known State
 
+### Repo layout (monorepo)
+- `userOrderService` — port **8080** (anvandare, JWT-inloggning, ordrar)
+- `productService` — port **8082** (produkter via FakeStore API)
+- `frontend` — React (Vite), anropar user service pa 8080 och product service pa 8082
+
 ### Backend architecture
-- Two Spring Boot services exist in this monorepo:
-  - `userOrderService` (users, auth, orders)
-  - `productService` (product catalog via FakeStore API)
+- Tva Spring Boot-tjanster med Flyway och PostgreSQL (konfigurerat via miljovariabler, t.ex. `DB_URL_LOCAL`).
 
 ### Implemented API capabilities
-- User registration and login are implemented.
-- JWT-based authentication is implemented.
-- Refresh token flow is implemented.
-- Product listing and product-by-id are implemented.
-- Order creation and "my orders" fetching are implemented.
+- Registrering, inloggning, JWT och refresh-token-flode i user/order-tjansten.
+- Produktlista och produkt enligt id i product-tjansten.
+- Skapa order och hamta "mina ordrar" i user/order-tjansten.
 
 ### Service communication
-- `userOrderService` calls `productService` over HTTP for product price lookup during order creation.
+- `userOrderService` anropar `productService` over HTTP (`GET .../api/products/{id}`) for prislookup vid orderskapande — **utan** service-till-service JWT i nulaget.
 
 ### Data and persistence
-- Database-first style is configured with Flyway enabled in service configs.
-- Core entities/repositories for users, refresh tokens, orders, and order items are present.
+- Database-first med Flyway; entiteter/repositories for anvandare, refresh tokens, ordrar, orderrader.
+
+### DevOps
+- **GitHub Actions:** `.github/workflows/user-order-service-ci.yml` och `product-service-ci.yml` — kors vid `push` och `pull_request` nar filer under respektive tjanst (eller workflow-filen) andrats.
+- **Docker:** multi-stage `Dockerfile` i varje backend-mapp; bygge och push till Docker Hub efter lyckade tester (pa `push`).
+- **Saknas annu:** RDS, EC2 i produktion, HTTPS, JWT mellan tjanster. **Compose:** `fakeStoreApp/docker-compose.yml` (Postgres + bada backends).
 
 ### Testing status
-- Unit tests exist for key services/utilities (user service, order service, JWT utility).
-- CI-based automatic test execution is not yet configured in repository workflows.
+- Enhetstester och `@SpringBootTest` dar det behovs; CI kor `mvn verify` med PostgreSQL som tjanst i workflow.
 
-## What's Next (When You Return)
+## What's Next (prioriterat)
 
-### 1) Frontend first (highest priority for G)
-- Build a minimal frontend that supports:
-  - register
-  - login
-  - list products
-  - create order
-- Connect frontend to `userOrderService` (`:8080`) and `productService` (`:8081`) endpoints.
+### 1) Molndata och deployment (G + VG-infrastruktur)
+- Satt upp AWS RDS och peka miljovariabler mot molndatabasen.
+- Driftsatt pa tva EC2 (eller motsvarande), sakra att GitHub-secrets for SSH/host matchar; verifiera `docker pull` + `docker run` med env-filer pa server.
+- Gor appen narbar fran internet och dokumentera URL for inlamning.
 
-### 2) Dockerize local environment
-- Add one `Dockerfile` per backend service.
-- Add `docker-compose.yml` that starts:
-  - `userOrderService`
-  - `productService`
-  - database
-- Make sure environment variables are passed from compose.
+### 2) HTTPS
+- Nginx (eller liknande) som reverse proxy, Let's Encrypt/Certbot for TLS.
 
-### 3) CI pipeline
-- Add GitHub Actions workflow under `.github/workflows/`.
-- On every push/PR: build + test both services.
-- Then build Docker images and push to DockerHub.
+### 3) JWT mellan tjanster (VG)
+- Utoka `productService` att krava/validera JWT pa interna endpoints och skicka token fran `ProductServiceClient` (fail-closed, tydliga fel).
 
-### 4) Cloud deployment
-- Deploy services to AWS EC2 (separate instances for VG target).
-- Use cloud database (AWS RDS).
-- Verify app is reachable from internet.
+### 4) docker-compose (G)
+- [x] `fakeStoreApp/docker-compose.yml`: Postgres + `user-order-service` + `product-service`; hemligheter i `.env` (se `.env.example`).
 
-### 5) HTTPS
-- Configure reverse proxy (for example Nginx).
-- Install TLS certificates via Let's Encrypt + Certbot.
-- Verify HTTPS works end-to-end.
-
-### 6) Final submission checklist
-- Confirm all unchecked boxes above are complete.
-- Add live URL + repository URL for Learnpoint submission.
-- Prepare short demo flow: register -> login -> browse products -> create order -> view orders.
+### 5) Final inlamning
+- Bocka av alla kravrutor ovan nar de ar sanna.
+- Learnpoint: repo-URL + live-sida.
+- Demo: registrera -> logga in -> produkter -> skapa order -> mina ordrar.
 
 ### Quick restart command list
-- Start backend services locally.
-- Call health/basic endpoints.
-- Run tests before any new feature work.
-- Continue from section **1) Frontend first**.
-
-
-
-
+- Docker (fran `fakeStoreApp/`): kopiera `.env.example` till `.env`, fyll i varden; `docker compose up --build`.
+- Starta `userOrderService` och `productService` lokalt utan Docker (med PostgreSQL och miljovariabler).
+- Starta frontend: `npm run dev` i `frontend/`.
+- Kor `./mvnw verify` i respektive tjanstmapp innan storre andringar.
