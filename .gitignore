@@ -1,0 +1,4 @@
+# Local secrets for Docker Compose (see .env.example)
+.env
+.env.*
+!.env.example
