@@ -56,8 +56,10 @@ class OrderServiceTest {
         ));
 
         when(jwtUtil.validateAndExtractAccessClaims("access-token")).thenReturn(claims);
-        when(productServiceClient.fetchProductPrice(1L)).thenReturn(new BigDecimal("10.00"));
-        when(productServiceClient.fetchProductPrice(2L)).thenReturn(new BigDecimal("5.50"));
+        when(productServiceClient.fetchProductPrice(eq(1L), eq("Bearer access-token")))
+                .thenReturn(new BigDecimal("10.00"));
+        when(productServiceClient.fetchProductPrice(eq(2L), eq("Bearer access-token")))
+                .thenReturn(new BigDecimal("5.50"));
 
         when(userOrderRepository.save(any(UserOrder.class))).thenAnswer(invocation -> {
             UserOrder order = invocation.getArgument(0);

@@ -45,7 +45,7 @@ public class OrderService {
         validateCreateOrderRequest(request);
 
         List<PreparedOrderItem> preparedItems = request.items().stream()
-                .map(this::prepareOrderItem)
+                .map(item -> prepareOrderItem(item, authorizationHeader))
                 .toList();
 
         BigDecimal totalAmount = preparedItems.stream()
@@ -82,7 +82,7 @@ public class OrderService {
                 .toList();
     }
 
-    private PreparedOrderItem prepareOrderItem(OrderItemCreateRequest requestItem) {
+    private PreparedOrderItem prepareOrderItem(OrderItemCreateRequest requestItem, String authorizationHeader) {
         if (requestItem.productId() == null) {
             throw new IllegalArgumentException("Product id is required");
         }
@@ -90,7 +90,7 @@ public class OrderService {
             throw new IllegalArgumentException("Quantity must be greater than zero");
         }
 
-        BigDecimal price = productServiceClient.fetchProductPrice(requestItem.productId());
+        BigDecimal price = productServiceClient.fetchProductPrice(requestItem.productId(), authorizationHeader);
         BigDecimal lineTotal = price.multiply(BigDecimal.valueOf(requestItem.quantity()));
         return new PreparedOrderItem(requestItem.productId(), requestItem.quantity(), price, lineTotal);
     }
