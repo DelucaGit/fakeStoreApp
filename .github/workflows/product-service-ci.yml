@@ -45,6 +45,7 @@ jobs:
       DB_URL_LOCAL: jdbc:postgresql://localhost:5432/product_ci
       DB_USERNAME_LOCAL: ci
       DB_PASSWORD_LOCAL: ci
+      JWT_SECRET_KEY: ci-test-jwt-secret-key-min-32-chars-long!!
     steps:
       - uses: actions/checkout@v4
 

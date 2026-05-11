@@ -13,12 +13,15 @@ import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class ProductServiceClientTest {
+
+    private static final String AUTH_HEADER = "Bearer test-token";
 
     private MockRestServiceServer mockServer;
     private ProductServiceClient productServiceClient;
@@ -35,11 +38,12 @@ class ProductServiceClientTest {
     void whenProductExists_thenReturnPrice() {
         mockServer.expect(requestTo("http://localhost:8082/api/products/1"))
                 .andExpect(method(HttpMethod.GET))
+                .andExpect(header("Authorization", AUTH_HEADER))
                 .andRespond(withSuccess("""
                         {"id":1,"price":19.99}
                         """, MediaType.APPLICATION_JSON));
 
-        BigDecimal price = productServiceClient.fetchProductPrice(1L);
+        BigDecimal price = productServiceClient.fetchProductPrice(1L, AUTH_HEADER);
 
         assertEquals(new BigDecimal("19.99"), price);
         mockServer.verify();
@@ -50,10 +54,11 @@ class ProductServiceClientTest {
     void whenProductNotFound_thenThrowIllegalArgumentException() {
         mockServer.expect(requestTo("http://localhost:8082/api/products/99"))
                 .andExpect(method(HttpMethod.GET))
+                .andExpect(header("Authorization", AUTH_HEADER))
                 .andRespond(withStatus(HttpStatus.NOT_FOUND));
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-                productServiceClient.fetchProductPrice(99L)
+                productServiceClient.fetchProductPrice(99L, AUTH_HEADER)
         );
 
         assertEquals("Product with id 99 was not found", ex.getMessage());
@@ -65,10 +70,11 @@ class ProductServiceClientTest {
     void whenProductServiceFails_thenThrowIllegalStateException() {
         mockServer.expect(requestTo("http://localhost:8082/api/products/1"))
                 .andExpect(method(HttpMethod.GET))
+                .andExpect(header("Authorization", AUTH_HEADER))
                 .andRespond(withStatus(HttpStatus.BAD_GATEWAY));
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-                productServiceClient.fetchProductPrice(1L)
+                productServiceClient.fetchProductPrice(1L, AUTH_HEADER)
         );
 
         assertEquals("Product service is unavailable", ex.getMessage());
@@ -80,12 +86,13 @@ class ProductServiceClientTest {
     void whenProductPriceIsMissing_thenThrowIllegalStateException() {
         mockServer.expect(requestTo("http://localhost:8082/api/products/1"))
                 .andExpect(method(HttpMethod.GET))
+                .andExpect(header("Authorization", AUTH_HEADER))
                 .andRespond(withSuccess("""
                         {"id":1}
                         """, MediaType.APPLICATION_JSON));
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-                productServiceClient.fetchProductPrice(1L)
+                productServiceClient.fetchProductPrice(1L, AUTH_HEADER)
         );
 
         assertEquals("Product service returned invalid price", ex.getMessage());

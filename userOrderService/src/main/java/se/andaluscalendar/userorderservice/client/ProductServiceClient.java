@@ -20,11 +20,12 @@ public class ProductServiceClient {
         this.productServiceBaseUrl = productServiceBaseUrl;
     }
 
-    public BigDecimal fetchProductPrice(Long productId) {
+    public BigDecimal fetchProductPrice(Long productId, String authorizationHeader) {
         ProductLookupResponse product;
         try {
             product = restClient.get()
                     .uri(productServiceBaseUrl + "/api/products/{id}", productId)
+                    .header("Authorization", authorizationHeader)
                     .retrieve()
                     .body(ProductLookupResponse.class);
         } catch (HttpClientErrorException.NotFound e) {

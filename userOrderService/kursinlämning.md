@@ -75,7 +75,7 @@ Utöver allt i G ska du:
 
 ### Servicekommunikation
 - [x] Tjansterna ska kommunicera via HTTP
-- [ ] Autentisering mellan tjanster ska ske med JWT (`ProductServiceClient` anropar utan Bearer/JWT an idag)
+- [x] Autentisering mellan tjanster ska ske med JWT (`ProductServiceClient` skickar `Authorization: Bearer ...`; `productService` validerar access-JWT med samma hemlighet som user-order)
 
 ### Infrastruktur
 - [ ] Tjansterna ska deployas pa separata EC2-instanser
@@ -105,7 +105,7 @@ Lamna in lank till repot pa Learnpoint och lank till er sida.
 - Skapa order och hamta "mina ordrar" i user/order-tjansten.
 
 ### Service communication
-- `userOrderService` anropar `productService` over HTTP (`GET .../api/products/{id}`) for prislookup vid orderskapande — **utan** service-till-service JWT i nulaget.
+- `userOrderService` anropar `productService` over HTTP (`GET .../api/products/{id}`) for prislookup vid orderskapande med **vidarebefordrad anvandar-access-JWT** i `Authorization`; `productService` validerar token (Spring Security + `JwtUtil`).
 
 ### Data and persistence
 - Database-first med Flyway; entiteter/repositories for anvandare, refresh tokens, ordrar, orderrader.
@@ -113,7 +113,7 @@ Lamna in lank till repot pa Learnpoint och lank till er sida.
 ### DevOps
 - **GitHub Actions:** `.github/workflows/user-order-service-ci.yml` och `product-service-ci.yml` — kors vid `push` och `pull_request` nar filer under respektive tjanst (eller workflow-filen) andrats.
 - **Docker:** multi-stage `Dockerfile` i varje backend-mapp; bygge och push till Docker Hub efter lyckade tester (pa `push`).
-- **Saknas annu:** RDS, EC2 i produktion, HTTPS, JWT mellan tjanster. **Compose:** `fakeStoreApp/docker-compose.yml` (Postgres + bada backends).
+- **Saknas annu:** RDS, EC2 i produktion, HTTPS. **Compose:** `fakeStoreApp/docker-compose.yml` (Postgres + bada backends; `JWT_SECRET_KEY` till bada tjanster for JWT-validering i product).
 
 ### Testing status
 - Enhetstester och `@SpringBootTest` dar det behovs; CI kor `mvn verify` med PostgreSQL som tjanst i workflow.
@@ -129,7 +129,7 @@ Lamna in lank till repot pa Learnpoint och lank till er sida.
 - Nginx (eller liknande) som reverse proxy, Let's Encrypt/Certbot for TLS.
 
 ### 3) JWT mellan tjanster (VG)
-- Utoka `productService` att krava/validera JWT pa interna endpoints och skicka token fran `ProductServiceClient` (fail-closed, tydliga fel).
+- [x] `productService` validerar access-JWT; `ProductServiceClient` skickar `Authorization` vid prislookup. CORS/OPTIONS ar hanterat i `productService` for frontend mot `8082`.
 
 ### 4) docker-compose (G)
 - [x] `fakeStoreApp/docker-compose.yml`: Postgres + `user-order-service` + `product-service`; hemligheter i `.env` (se `.env.example`).
