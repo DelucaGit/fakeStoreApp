@@ -29,8 +29,8 @@ Fokus i projektet ligger pa att utveckla, testa och driftsatta en molnbaserad ap
 - [x] Anvandare ska kunna registrera konto och logga in
 
 ### Databas
-- [ ] Applikationen ska anvanda en databas i molnet
-- [ ] Databasen ska koras i AWS RDS
+- [x] Applikationen ska anvanda en databas i molnet (bada tjanster kor pa EC2 mot RDS; verifierat med Postman: skapa anvandare, hamta produkter m.m.)
+- [x] Databasen ska koras i AWS RDS (instans `cloudstore-postgres`, region `eu-north-1`, bada databaserna `users_and_orders_db` och `product_db`)
 
 ### Tester
 - [x] Projektet ska innehalla automatiska tester for karnfunktionalitet
@@ -55,8 +55,8 @@ docker-compose ska starta upp:
 
 ### Deployment
 Applikationen ska:
-- [ ] deployas till AWS EC2 (workflow finns; verifiera nar instanser ar klara)
-- [ ] vara tillganglig via internet
+- [x] deployas till AWS EC2 (en instans, Amazon Linux 2023; bada Spring Boot-JAR mot RDS; manuell start via `java -jar` efter SSH — se AWS-avsnittet nedan)
+- [x] vara tillganglig via internet (Postman mot publikt EC2-IP pa 8080/8082; EC2-SG oppen `0.0.0.0/0` for lararkorrection — medvetet testlage, inte produktionssakerhet)
 
 ### HTTPS
 - [ ] Applikationen ska vara tillganglig via HTTPS
@@ -78,7 +78,7 @@ Utöver allt i G ska du:
 - [x] Autentisering mellan tjanster ska ske med JWT (`ProductServiceClient` skickar `Authorization: Bearer ...`; `productService` validerar access-JWT med samma hemlighet som user-order)
 
 ### Infrastruktur
-- [ ] Tjansterna ska deployas pa separata EC2-instanser
+- [ ] Tjansterna ska deployas pa separata EC2-instanser (nu: **en** EC2 kor bada JAR; planerat att dela upp i tva instanser for VG)
 
 ### CI/CD
 CI/CD-pipelinen ska:
@@ -88,6 +88,49 @@ CI/CD-pipelinen ska:
 - [ ] deploya appen till AWS (deploy-steg i workflow; kraver EC2 + secrets + miljo pa server)
 
 Lamna in lank till repot pa Learnpoint och lank till er sida.
+
+## AWS-driftsattning — handoff for nasta AI / aterupptag
+
+**Var vi ar (2026-05):** Molnlaget ar **uppe och API-testat** (Postman: anvandarregistrering, produkter). **Aterstar:** processoverlevnad efter SSH (`systemd`/`tmux`/`nohup`), ev. tva EC2 for VG, HTTPS, ev. CI-deploy till AWS, dokumentera publik URL for inlamning.
+
+### Stegdefinitioner (denna konversation)
+
+| Steg | Innehall | Status |
+|------|-----------|--------|
+| 1 | EC2 security group: SSH 22, 8080, 8082 | Klart — inbound **`0.0.0.0/0`** avsiktligt sa **larare** kan na API fran internet (testkurs; inte rekommenderat i riktig produktion) |
+| 2 | Java 21 pa EC2 (Amazon Corretto 21 verifierad) | Klart |
+| 3 | Bygg JAR lokalt (`mvnw package`), `scp` fran **Windows PowerShell** till `ec2-user@...:/home/ec2-user/` | Klart (`productService-0.0.1-SNAPSHOT.jar`, `userOrderService-0.0.1-SNAPSHOT.jar` i `~`) |
+| 4 | Pa EC2: `export` / miljovariabler; **olika** `DB_URL_LOCAL` per tjanst; **product** (8082) forst, sedan **user-order** (8080) | Klart |
+| 5 | Roktest (Postman / HTTP mot publikt EC2-IP) | Klart |
+| 6 | Process lever vid SSH-avbrott (`systemd`, `screen`, `tmux`, eller `nohup`) | **Ej gjort** — tjanster stoppas om SSH-sessionen avslutas utan bakgrundskorning |
+| 7 | VG: **tva** separata EC2 (en tjanst per instans) | **Planerat** — just nu en instans kor bada JAR |
+
+### RDS (PostgreSQL; motorversion i AWS kan vara nyare an 16 — t.ex. 18.x — appen anvander `sslmode=require`)
+
+- **Instansidentifierare:** `cloudstore-postgres`
+- **Region:** `eu-north-1`
+- **Endpoint (host i JDBC/psql):** `cloudstore-postgres.cvck4ycychj2.eu-north-1.rds.amazonaws.com`
+- **Databaser:** `users_and_orders_db` (skapad vid RDS-wizard), `product_db` (skapad med `CREATE DATABASE` fran EC2 via `psql`)
+- **Lokal laptop ansluter inte till RDS** (design); admin gar via SSH till EC2.
+- **`psql \l`:** kan ge katalogfel (`d.daticulocale`); anvand `SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY 1;` for att lista databaser.
+
+**JDBC-exempel (samma host, olika databasnamn — laggs i `DB_URL_LOCAL` per process):**
+
+- Product: `jdbc:postgresql://cloudstore-postgres.cvck4ycychj2.eu-north-1.rds.amazonaws.com:5432/product_db?sslmode=require`
+- User-order: `jdbc:postgresql://cloudstore-postgres.cvck4ycychj2.eu-north-1.rds.amazonaws.com:5432/users_and_orders_db?sslmode=require`
+
+Ovriga variabler enligt repo: `DB_USERNAME_LOCAL`, `DB_PASSWORD_LOCAL`, samma `JWT_SECRET_KEY` pa **bada** tjanster, `AUTH_ENDPOINT_REGISTER`, `AUTH_ENDPOINT_USER_FETCH`, `PRODUCT_SERVICE_BASE_URL` (t.ex. `http://127.0.0.1:8082` om bada JAR kor pa samma EC2), `CORS_ALLOWED_ORIGINS`. Se `.env.example` / `README.md`.
+
+### EC2
+
+- SSH med `.pem` pa **Desktop** (Windows) — korrekt `ssh -i "C:\Users\...\Desktop\....pem" ec2-user@<publik IPv4>`.
+- RDS security group ska tillata **5432 fran EC2-instansens security group** (inte publika klienter).
+
+### Sakerhet (nuvarande testbeslut)
+
+- **EC2:** Inbound **`0.0.0.0/0`** pa relevanta portar — **medvetet** for lararaccess; byt till snavare regler eller Session Manager efter kursen om mojligt.
+- **RDS:** Endast **5432** mot EC2-instansens security group (inte oppen mot hela internet). Masterlosenord / JWT **ej** roterade i detta testskede (acceptabelt for kursdemo; rotera vid riktig exponering).
+- **Hemligheter:** lag aldrig riktiga losenord eller JWT i repo eller chatloggar.
 
 ## Current Known State
 
@@ -113,7 +156,7 @@ Lamna in lank till repot pa Learnpoint och lank till er sida.
 ### DevOps
 - **GitHub Actions:** `.github/workflows/user-order-service-ci.yml` och `product-service-ci.yml` — kors vid `push` och `pull_request` nar filer under respektive tjanst (eller workflow-filen) andrats.
 - **Docker:** multi-stage `Dockerfile` i varje backend-mapp; bygge och push till Docker Hub efter lyckade tester (pa `push`).
-- **Saknas annu:** RDS, EC2 i produktion, HTTPS. **Compose:** `fakeStoreApp/docker-compose.yml` (Postgres + bada backends; `JWT_SECRET_KEY` till bada tjanster for JWT-validering i product).
+- **AWS (drift idag):** RDS `cloudstore-postgres` + **en** EC2 med tva manuellt startade JAR mot RDS; **Postman** verifierar floden. **Ej annu:** `systemd`/bakgrundskorning, **HTTPS**, **tva EC2** (VG), automatisk **workflow-deploy** till denna miljo (JAR-korning ar manuell efter SSH). **Compose** for lokal utveckling: `fakeStoreApp/docker-compose.yml`.
 
 ### Testing status
 - Enhetstester och `@SpringBootTest` dar det behovs; CI kor `mvn verify` med PostgreSQL som tjanst i workflow.
@@ -121,9 +164,10 @@ Lamna in lank till repot pa Learnpoint och lank till er sida.
 ## What's Next (prioriterat)
 
 ### 1) Molndata och deployment (G + VG-infrastruktur)
-- Satt upp AWS RDS och peka miljovariabler mot molndatabasen.
-- Driftsatt pa tva EC2 (eller motsvarande), sakra att GitHub-secrets for SSH/host matchar; verifiera `docker pull` + `docker run` med env-filer pa server.
-- Gor appen narbar fran internet och dokumentera URL for inlamning.
+- **Klart i grova drag:** RDS + en EC2 + manuella JAR + Postman-test; G-krav for molndata och EC2-deploy ar bockade under **Databas** och **Deployment** ovan.
+- **Nasta konkreta steg:** `systemd` (eller motsv.) sa tjansterna **overlever SSH-avbrott** och omstart; dokumentera **publik bas-URL** (EC2-IP eller Elastic IP/DNS) for Learnpoint.
+- **VG:** dela upp i **tva EC2** (en tjanst per instans); uppdatera `PRODUCT_SERVICE_BASE_URL` till intern/publik adress mellan instanser.
+- **Valfritt:** koppla befintlig GitHub Actions-deploy till miljon (secrets mot EC2), eller `docker pull` + `docker run` pa server i stallet for manuell JAR.
 
 ### 2) HTTPS
 - Nginx (eller liknande) som reverse proxy, Let's Encrypt/Certbot for TLS.
