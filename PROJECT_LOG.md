@@ -4,7 +4,7 @@ This file is the working memory of the project. If you stop touching the code fo
 
 Secrets are never committed here. Passwords, JWT secrets, RDS master credentials and `.pem` keys are intentionally **not** in this file. Placeholders look like `<your_db_password>`.
 
-Last meaningful update: 2026-05-28.
+Last meaningful update: 2026-06-04.
 
 ## 1. Project snapshot
 
@@ -12,9 +12,12 @@ Last meaningful update: 2026-05-28.
 - Backend: two Spring Boot services (`userOrderService`, `productService`).
 - Frontend: React + Vite + TypeScript (`frontend/`).
 - Database: AWS RDS PostgreSQL, two logical databases.
-- Hosting: one AWS EC2 instance (Amazon Linux 2023) runs **both** backend JARs under `systemd`.
-- Frontend: not yet hosted; runs locally via `npm run dev` and points at the EC2 backend through env vars.
-- Status: backend is reachable from the internet on ports `8080` and `8082`; smoke test passes (`GET /api/products` returns `200`).
+- Hosting: **two EC2 instances (VG split COMPLETE as of 2026-06-04).**
+  - **EC2 #1 (`cloudstore-app`, the original):** runs `userOrderService` (:8080) ONLY, still as a `systemd` JAR. The old `productService` systemd unit here is now stopped and disabled.
+  - **EC2 #2 (`cloudstore-product`, NEW):** runs `productService` (:8082) ONLY, as a **Docker container** pulled from Docker Hub. Live, returns `200` on `GET /api/products`.
+  - `userOrderService` reaches `productService` over the **private DNS** of EC2 #2 inside the VPC. Verified by a successful end-to-end order creation.
+- Frontend: not yet hosted; runs locally via `npm run dev` and points at the EC2 backends through env vars. `VITE_PRODUCT_SERVICE_URL` now targets the new product EC2 public DNS.
+- Status: two-EC2 split is functionally done and tested end-to-end (register → login → products → create order → my orders). See section 16 for full detail. **Next candidates: CI/CD deploy secrets to both EC2s, or HTTPS.**
 
 Outstanding items (from `userOrderService/kursinlämning.md`) are listed in section 12.
 
@@ -438,14 +441,15 @@ Authoritative checklist is in `userOrderService/kursinlämning.md`. Summary belo
 - Docker Compose for local dev (Postgres + both services).
 - Frontend React + Vite SPA with full happy path.
 - AWS RDS in use.
-- AWS EC2 in use, public reachable, services managed by systemd (this session).
+- AWS EC2 in use, public reachable.
 - JWT shared between services for service-to-service calls.
+- **VG infrastructure: two separate EC2 instances, one service each (DONE 2026-06-04).** product-service runs as Docker on the new EC2; user-order runs as a systemd JAR on the original EC2 and calls product over private DNS. Verified end-to-end. Detail in section 16.
 
 ### Left
 
 - HTTPS termination (Let's Encrypt / Nginx).
-- VG infrastructure: two separate EC2 instances (one per service). Currently both run on one instance.
-- Hook GitHub Actions deploy step to real EC2 (Docker Hub → `docker pull` on the host). Workflow exists but secrets/host config to verify.
+- (Optional) Move user-order to Docker so both services deploy identically. See section 17.1.
+- Hook GitHub Actions deploy step to real EC2 (Docker Hub → `docker pull` on the host). Workflow exists; needs repo secrets set. Env files live at `/opt/cloudstore/*.env` (matches the workflow), owned by `ec2-user` mode 600. See section 17.2.
 - Optional polish: drop `application.properties` `spring.jpa.show-sql=true` in production, add proper `@Valid` Bean Validation on request DTOs, decide product DB usage or remove its table.
 - Final submission: live URL documented for Learnpoint.
 
@@ -523,4 +527,82 @@ curl -i -X POST http://127.0.0.1:8080/api/users/login \
   -H "Content-Type: application/json" \
   -d '{"email":"nope@test.com","password":"nope"}'
 ```
+
+## 16. Two-EC2 split — COMPLETE (checkpoint 2026-06-04)
+
+This section is the working memory for the VG split. The split is **done and verified end-to-end**. Read this first when resuming, then jump to section 17 for what comes next.
+
+### 16.1 Decisions locked in
+
+- Keep the original EC2, launch ONE new EC2 for product-service.
+- Service-to-service traffic goes over the **private DNS** inside the same VPC (not public internet).
+- One Elastic IP per instance is allowed (only if it costs nothing meaningful; may be skipped).
+- Both instances in the **same VPC**, same AZ (`eu-north-1a`).
+- Packaging: **Docker** (pull image from Docker Hub, run with `docker run --restart unless-stopped`). Reason: the existing GitHub Actions deploy step already does `docker pull` + `docker run`, so Docker on the host is what makes the CI/CD deploy work end-to-end. `--restart unless-stopped` gives the same survive-reboot behavior systemd gave us.
+
+### 16.2 The two instances
+
+| Role | Name tag | Public DNS | Private hostname | Service | How it runs |
+|------|----------|------------|------------------|---------|-------------|
+| Original | `cloudstore-app` | `ec2-13-49-75-31.eu-north-1.compute.amazonaws.com` | `ip-172-31-20-136` | userOrderService :8080 ONLY (product unit stopped+disabled) | systemd JAR |
+| NEW product | `cloudstore-product` | `ec2-16-171-175-179.eu-north-1.compute.amazonaws.com` (IP `16.171.175.179`) | `ip-172-31-46-104.eu-north-1.compute.internal` | productService :8082 ONLY | Docker container `cloudstore-product` |
+
+Docker Hub user is `delucagit`. Product image: `delucagit/cloudstore-product-service:latest`.
+
+Both instances share ONE security group with inbound TCP `8080` and `8082` open to `0.0.0.0/0` (course testing posture), plus SSH `22`. The shared SG is also why EC2-to-EC2 private calls on `8082` work.
+
+### 16.3 What is DONE (product side)
+
+- New EC2 launched (Amazon Linux 2023, t3.micro, same key `cloudstore-ec2-key`).
+- Docker installed: `sudo dnf install -y docker`, `sudo systemctl enable --now docker`, `sudo usermod -aG docker ec2-user` (then re-login for the group to take effect).
+- `docker login -u delucagit` succeeded (plain `docker login` with the prompt failed; using `-u` worked).
+- Env file at `/opt/cloudstore/product.env`, owned by `ec2-user:ec2-user`, mode `600` (see 16.5 for why NOT root-owned).
+- Container running and verified:
+
+```bash
+docker run -d \
+  --name cloudstore-product \
+  -p 8082:8082 \
+  --restart unless-stopped \
+  --env-file /opt/cloudstore/product.env \
+  delucagit/cloudstore-product-service:latest
+```
+
+- Logs reach `Started ProductServiceApplication`, Flyway validates 1 migration against `product_db`, and `curl -i http://127.0.0.1:8082/api/products` returns `200` with the full FakeStore product list.
+
+### 16.4 What was DONE (user-order side)
+
+1. **Verified private reachability.** From the OLD EC2, `curl -i http://ip-172-31-46-104.eu-north-1.compute.internal:8082/api/products` returned `200`. Confirms VPC-internal service-to-service works.
+
+2. **Repointed user-order.** On the OLD EC2, edited `/etc/cloudstore-user-order.env` and changed `PRODUCT_SERVICE_BASE_URL` from `http://127.0.0.1:8082` to `http://ip-172-31-46-104.eu-north-1.compute.internal:8082`, then `sudo systemctl restart cloudstore-user-order.service`.
+
+   NOTE: user-order is still a **systemd JAR** on the old EC2, NOT Docker yet. We chose to repoint + restart the existing systemd service rather than migrate it to Docker in the same step, to keep the change small and testable. Moving user-order to Docker is still open (needed for the CI/CD deploy step to work against it). See section 17.
+
+3. **Retired the product JAR on the OLD EC2.** `sudo systemctl stop cloudstore-product.service` + `sudo systemctl disable cloudstore-product.service`. Verified user-order is `active (running)` and product is inactive/disabled on the old box.
+
+4. **End-to-end test passed.** From laptop + frontend: register → login → products → **create order** → my orders all worked. Order creation is the real proof, because that is when user-order calls product-service over the private DNS with the forwarded JWT.
+
+### 16.5 Gotchas hit during the product split (so we don't repeat them)
+
+- **Docker `--env-file` is literal `KEY=value`.** It does NOT strip quotes or process `export` like a shell. Three separate failures came from this:
+  - Quotes around values: `DB_USERNAME_LOCAL='cloudstore'` made Postgres see the username literally as `'cloudstore'` (with quotes) → `password authentication failed for user "'cloudstore'"`.
+  - A bad/empty URL value → `'url' must start with "jdbc"`.
+  - Fix: plain values, no quotes, no `export`, no spaces around `=`. Verify with `grep -n "'" file ; grep -n '"' file` (should print nothing).
+- **Wrong database name** → `Migration checksum mismatch for migration version 1`. The product env had `users_and_orders_db`; it MUST be `product_db`. Same gotcha as section 6/14. Do NOT run Flyway repair — just point at the right DB.
+- **Env file ownership for Docker differs from systemd.** systemd reads `EnvironmentFile` as root, so root:root 600 was fine there. Docker reads `--env-file` as the invoking user (`ec2-user`), so the file must be `chown ec2-user:ec2-user` + `600`, otherwise `docker run` fails with `open /opt/cloudstore/product.env: permission denied`. Keeping it ec2-user-owned also matches how the CI deploy (SSH as ec2-user, no sudo) will read it.
+- **`<placeholder>` in commands.** Pasting `<dockerhub-username>` literally makes bash try input redirection (`No such file or directory`). Always substitute real values; never leave angle brackets.
+- **curl too soon.** Spring Boot takes ~10–15s to boot; an immediate `curl` gives `Connection reset by peer` / `Empty reply`. Wait, then check `docker ps` STATUS and `docker logs`.
+- **A blocked client network looks like an AWS bug but isn't.** The frontend got `ERR_CONNECTION_TIMED_OUT` on `:8082` for BOTH EC2s, while `:8080` worked and EC2-to-EC2 `:8082` worked. Root cause was the laptop's Wi-Fi blocking outbound port `8082`; switching Wi-Fi fixed it instantly. How we proved it: `Test-NetConnection` from the laptop showed `8080 -> True` but `8082 -> timeout` to the same shared SG, so the SG couldn't be the cause. Lesson: when one port works and another times out on the same security group, suspect the client network, not AWS. (This is also an argument for the HTTPS/443 fix, since 443 is rarely blocked.)
+
+## 17. What's next (resume here after the split)
+
+The two-EC2 split is done. Remaining work toward final submission, roughly in priority order:
+
+1. **(Optional consistency) Move user-order to Docker on the old EC2.** Right now product runs as Docker but user-order still runs as a systemd JAR. They work fine mixed, but the CI/CD deploy step (`docker pull` + `docker run`) can only auto-deploy a service that runs as Docker. Migrating user-order to Docker makes both deployable the same way. Mirror section 16.3: build/pull `delucagit/cloudstore-user-order-service:latest`, create `/opt/cloudstore/user-order.env` (ec2-user, 600), stop+disable `cloudstore-user-order.service`, then `docker run -p 8080:8080 --restart unless-stopped`.
+
+2. **Wire GitHub Actions deploy to both EC2s.** Workflows already have a `deploy-ec2` job that SSHes and runs `docker pull`/`docker run` against `/opt/cloudstore/<service>.env`. Set the repo secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, and per service `*_EC2_HOST` / `*_EC2_USER` / `*_EC2_SSH_KEY`. Host paths already match (`/opt/cloudstore/`). For user-order this depends on step 1 being done.
+
+3. **HTTPS (G requirement, still unchecked).** Put a reverse proxy (Nginx) + Let's Encrypt/Certbot in front so the app is reachable over `443`. Bonus: 443 is not blocked by restrictive client networks (see the gotcha in 16.5).
+
+4. **Final submission.** Document the live public URL for Learnpoint and tick the remaining boxes in `userOrderService/kursinlämning.md`.
 
