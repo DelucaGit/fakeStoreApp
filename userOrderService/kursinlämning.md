@@ -78,14 +78,14 @@ Utöver allt i G ska du:
 - [x] Autentisering mellan tjanster ska ske med JWT (`ProductServiceClient` skickar `Authorization: Bearer ...`; `productService` validerar access-JWT med samma hemlighet som user-order)
 
 ### Infrastruktur
-- [x] Tjansterna ska deployas pa separata EC2-instanser (KLART 2026-06-04: `userOrderService` kor pa `cloudstore-app`-EC2 (systemd JAR), `productService` kor pa ny `cloudstore-product`-EC2 (Docker); user-order anropar product via privat DNS i samma VPC; verifierat end-to-end med orderskapande)
+- [x] Tjansterna ska deployas pa separata EC2-instanser (KLART 2026-06-04: `userOrderService` kor pa `cloudstore-app`-EC2, `productService` kor pa ny `cloudstore-product`-EC2; bada kor nu som Docker-containrar; user-order anropar product via privat DNS i samma VPC; verifierat end-to-end med orderskapande)
 
 ### CI/CD
 CI/CD-pipelinen ska:
 - [x] bygga applikationen
 - [x] kora tester
 - [x] skapa Docker images och deploya till Dockerhub
-- [ ] deploya appen till AWS (deploy-steg i workflow; kraver EC2 + secrets + miljo pa server)
+- [x] deploya appen till AWS (KLART 2026-06-07: deploy-steg SSH:ar till respektive EC2 och kor `docker pull` + `docker run`; GitHub-secrets satta; verifierat for user-order vid push till `main` — `deploy-ec2`-jobbet lyckades och ny container kordes pa EC2. Product-workflow ar identiskt uppsatt och EC2:n ar Docker-redo)
 
 Lamna in lank till repot pa Learnpoint och lank till er sida.
 
