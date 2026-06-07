@@ -4,7 +4,7 @@ This file is the working memory of the project. If you stop touching the code fo
 
 Secrets are never committed here. Passwords, JWT secrets, RDS master credentials and `.pem` keys are intentionally **not** in this file. Placeholders look like `<your_db_password>`.
 
-Last meaningful update: 2026-06-04.
+Last meaningful update: 2026-06-07.
 
 ## 1. Project snapshot
 
@@ -17,8 +17,9 @@ Last meaningful update: 2026-06-04.
   - **EC2 #2 (`cloudstore-product`, NEW):** runs `productService` (:8082) ONLY, as a **Docker container** pulled from Docker Hub. Live, returns `200` on `GET /api/products`.
   - `userOrderService` reaches `productService` over the **private DNS** of EC2 #2 inside the VPC. Verified by a successful end-to-end order creation.
 - CI/CD: **deploy to AWS works (2026-06-07).** Push to `main` → build/test → push image to Docker Hub → SSH to the service's EC2 → `docker pull` + `docker run`. Verified for user-order (the `deploy-ec2` job succeeded and a fresh container was confirmed running on the box).
-- Frontend: not yet hosted; runs locally via `npm run dev` and points at the EC2 backends through env vars. `VITE_PRODUCT_SERVICE_URL` now targets the new product EC2 public DNS.
-- Status: two-EC2 split done, both services on Docker, CI/CD auto-deploy working. **Only remaining big item: HTTPS.** See sections 16–17.
+- Frontend: **now hosted publicly (2026-06-07).** Built React app (`frontend/dist`) is served by **Nginx on port 80 on the old EC2** at `http://ec2-13-49-75-31.eu-north-1.compute.amazonaws.com`. Full flow (register → login → products → create order → my orders) works against the live backends.
+- HTTPS: **requirement REMOVED by the teacher (2026-06-07).** No TLS/cert work needed. The site runs on plain HTTP; the browser "not secure" warning is expected and acceptable.
+- Status: **all G and VG technical requirements met.** Two-EC2 Docker split, CI/CD auto-deploy, and a public frontend link for submission. See sections 16–18.
 
 Outstanding items (from `userOrderService/kursinlämning.md`) are listed in section 12.
 
@@ -446,13 +447,14 @@ Authoritative checklist is in `userOrderService/kursinlämning.md`. Summary belo
 - JWT shared between services for service-to-service calls.
 - **VG infrastructure: two separate EC2 instances, one service each (DONE 2026-06-04).** Both services now run as Docker containers (user-order migrated from JAR on 2026-06-07); user-order calls product over private DNS. Verified end-to-end. Detail in section 16.
 - **VG CI/CD: auto-deploy to AWS (DONE 2026-06-07).** Push to `main` builds, tests, pushes the image, and SSH-deploys to the service's EC2. Verified for user-order. Detail in section 17.
+- **Public frontend hosted (DONE 2026-06-07).** Nginx on the old EC2 serves the built React app on port 80. Live submission link. Detail in section 18.
+- **HTTPS requirement REMOVED by the teacher (2026-06-07).** No longer needed.
 
 ### Left
 
-- HTTPS termination (Let's Encrypt / Nginx).
 - Observe the product CI/CD deploy once (identical workflow, not yet watched on `main`). See section 17.4.
 - Optional polish: drop `application.properties` `spring.jpa.show-sql=true` in production, add proper `@Valid` Bean Validation on request DTOs, decide product DB usage or remove its table.
-- Final submission: live URL documented for Learnpoint.
+- Optional robustness: allocate Elastic IPs so the public DNS (and therefore the baked-in frontend URLs + CORS origins) survive instance stop/start. See section 18.
 
 ## 13. CI/CD
 
@@ -617,6 +619,34 @@ The deploy looked skipped because we were viewing the PR run / feature-branch pu
 ### 17.4 Left
 
 1. **(Low risk) Observe the product deploy once.** The product workflow is identical and the product EC2 is Docker-ready with `/opt/cloudstore/product.env`, but a `productService/**` change has not yet been merged to `main` with the secrets in place, so we have not *watched* it deploy. Merge a tiny product change to `main` to confirm.
-2. **HTTPS (G requirement, still unchecked).** Reverse proxy (Nginx) + Let's Encrypt/Certbot so the app is reachable over `443`. Bonus: 443 is not blocked by restrictive client networks (see 16.5).
-3. **Final submission.** Document the live public URL for Learnpoint and tick remaining boxes in `userOrderService/kursinlämning.md`.
+2. ~~HTTPS~~ — requirement removed by the teacher (2026-06-07). Not needed.
+
+## 18. Public frontend hosting (DONE 2026-06-07)
+
+The submission needs a live "sida" link. We host the built React app on the **old EC2** via Nginx on port 80. Everything stays HTTP (HTTPS requirement was removed), which avoids the mixed-content problem you'd hit if the frontend were on an HTTPS host calling HTTP backends.
+
+### 18.1 Live URLs
+
+- Frontend (the submission link): `http://ec2-13-49-75-31.eu-north-1.compute.amazonaws.com`
+- It calls user-order at `http://ec2-13-49-75-31...:8080` and product at `http://ec2-16-171-175-179...:8082` (absolute URLs baked into the build).
+
+### 18.2 How it's set up
+
+- Build config: `frontend/.env.production` (committed; URLs are public, not secrets) holds `VITE_USER_SERVICE_URL` and `VITE_PRODUCT_SERVICE_URL`. `npm run build` reads it automatically.
+- The build runs `tsc -b` first (strict), which `npm run dev` skips. Had to remove unused imports (`React` default imports under the React 19 JSX transform, plus a few unused names) to get a clean build. Files touched: `App.tsx`, `Navbar.tsx`, `ProtectedRoute.tsx`, `AuthContext.tsx`, `MyOrders.tsx`, `ProductList.tsx`.
+- Upload: `scp -r dist/* ec2-user@<old-ec2>:/home/ec2-user/frontend-dist/`, then on the box `sudo cp -r /home/ec2-user/frontend-dist/* /usr/share/nginx/html/`.
+- Nginx: `sudo dnf install -y nginx`, config at `/etc/nginx/conf.d/cloudstore.conf` with SPA fallback `try_files $uri $uri/ /index.html;` (needed because the app uses `BrowserRouter` — without it, refreshing `/products` 404s). Had to comment out the default `server` block in `/etc/nginx/nginx.conf` to avoid a duplicate `default_server` on port 80.
+- Security group: opened inbound TCP `80`.
+- CORS: added the frontend origin `http://ec2-13-49-75-31.eu-north-1.compute.amazonaws.com` (NO port, NO trailing slash) to `CORS_ALLOWED_ORIGINS` in BOTH `/opt/cloudstore/*.env`. Both services split this on commas.
+
+### 18.3 Gotchas hit (important)
+
+- **`docker restart` does NOT re-read `--env-file`.** Env vars are captured at container creation (`docker run`). After editing an env file you MUST recreate the container (`docker rm -f` + `docker run`), not `docker restart`. We chased a CORS failure for a while because the restarted container still had the old `CORS_ALLOWED_ORIGINS`. (CI/CD is unaffected — its deploy already does stop/rm/run.)
+- **Static-host MIME error.** `Failed to load module script ... MIME type "text/html"` meant Nginx served `index.html` for the JS request — caused by assets not being in the web root / wrong perms before a clean re-copy. Fixed by re-copying `dist/*` and `chmod -R 755`. Verify with `curl -I http://127.0.0.1/assets/<file>.js` → expect `Content-Type: application/javascript`.
+- **Browser HTTPS auto-upgrade.** Chrome may try to upgrade the site to `https://` (which the box doesn't serve). Use the explicit `http://` URL; test in incognito to dodge cache + HSTS.
+- **CORS applies even when all-HTTP.** The site (port 80) and APIs (8080/8082) are different origins, so the cross-origin rules still apply — hence the CORS origin entries are mandatory.
+
+### 18.4 Fragility to know for submission
+
+The backend URLs are baked into the build, and the EC2s have **no Elastic IP**. If an instance is stopped/started, its public DNS changes and (a) the frontend can't reach the backend, and (b) the CORS origin no longer matches. Fix would be: rebuild the frontend with the new URLs, re-upload, and update CORS — or allocate Elastic IPs to make the addresses stable. For a graded submission, allocating EIPs first is the safer move so the link doesn't rot mid-review.
 

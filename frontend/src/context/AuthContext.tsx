@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { apiFetch, getAccessToken, setTokens, clearTokens, getRefreshToken } from '../api/client';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { getAccessToken, setTokens, clearTokens, getRefreshToken } from '../api/client';
 import { ENDPOINTS } from '../api/endpoints';
 import type { UserResponse } from '../api/types';
 

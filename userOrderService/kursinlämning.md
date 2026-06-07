@@ -55,12 +55,13 @@ docker-compose ska starta upp:
 
 ### Deployment
 Applikationen ska:
-- [x] deployas till AWS EC2 (en instans, Amazon Linux 2023; bada Spring Boot-JAR mot RDS; manuell start via `java -jar` efter SSH — se AWS-avsnittet nedan)
-- [x] vara tillganglig via internet (Postman mot publikt EC2-IP pa 8080/8082; EC2-SG oppen `0.0.0.0/0` for lararkorrection — medvetet testlage, inte produktionssakerhet)
+- [x] deployas till AWS EC2 (tva EC2-instanser, Amazon Linux 2023; bada tjanster kor som Docker-containrar mot RDS; se AWS-avsnittet nedan)
+- [x] vara tillganglig via internet (publik frontend pa `http://ec2-13-49-75-31.eu-north-1.compute.amazonaws.com` (Nginx port 80), backend publikt pa 8080/8082; EC2-SG oppen `0.0.0.0/0` for lararkorrection — medvetet testlage, inte produktionssakerhet)
 
-### HTTPS
-- [ ] Applikationen ska vara tillganglig via HTTPS
-- [ ] TLS-certifikat ska installeras med exempelvis Let's Encrypt/Certbot
+### HTTPS — KRAV BORTTAGET (2026-06-07)
+Läraren har tagit bort HTTPS-kravet. Behöver INTE göras.
+- [~] Applikationen ska vara tillganglig via HTTPS (ej langre krav)
+- [~] TLS-certifikat ska installeras med exempelvis Let's Encrypt/Certbot (ej langre krav)
 
 ## Val Godkant (VG)
 Utöver allt i G ska du:
@@ -88,6 +89,12 @@ CI/CD-pipelinen ska:
 - [x] deploya appen till AWS (KLART 2026-06-07: deploy-steg SSH:ar till respektive EC2 och kor `docker pull` + `docker run`; GitHub-secrets satta; verifierat for user-order vid push till `main` — `deploy-ec2`-jobbet lyckades och ny container kordes pa EC2. Product-workflow ar identiskt uppsatt och EC2:n ar Docker-redo)
 
 Lamna in lank till repot pa Learnpoint och lank till er sida.
+
+### Inlamningslankar
+- Repo: GitHub `DelucaGit/fakeStoreApp`
+- Live sida (frontend): `http://ec2-13-49-75-31.eu-north-1.compute.amazonaws.com`
+  - OBS: plain HTTP (HTTPS-kravet ar borttaget). Webblasaren kan varna "ej saker" — det ar vantat for den har versionen.
+  - OBS: EC2 saknar Elastic IP, sa publik DNS andras vid stop/start. Om sidan slutar na backend efter omstart: bygg om frontend med nya URL:er och uppdatera CORS.
 
 ## AWS-driftsattning — handoff for nasta AI / aterupptag
 

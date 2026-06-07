@@ -1,19 +1,27 @@
-# fakeStoreApp (CloudStore backend)
+# fakeStoreApp (CloudStore)
 
-Two Spring Boot microservices behind a single Postgres instance, built around a JWT auth flow and product catalog. This README covers the **backend only**. A `frontend/` directory exists in the repo but is still in progress and is intentionally not documented here yet.
+CloudStore is a small cloud-based e-commerce application. Users can register, log in, browse products from FakeStore API, create orders, and view their order history.
+
+The project is a monorepo with two Spring Boot backend services and a React frontend. The live submission version runs on AWS: the backend services run as Docker containers on separate EC2 instances, the database runs in AWS RDS PostgreSQL, and the frontend is served publicly through Nginx.
+
+Live frontend: <http://ec2-13-49-75-31.eu-north-1.compute.amazonaws.com>
 
 ## Architecture at a glance
 
 ```
-  client  ──►  userOrderService (:8080)  ──►  productService (:8082)
-                       │                              │
-                       └────────► postgres (:5432, two databases) ◄────────┘
+  browser
+    │
+    ▼
+  React frontend ──► userOrderService (:8080) ──► productService (:8082)
+                           │                             │
+                           └────► AWS RDS PostgreSQL ◄────┘
 ```
 
 - `userOrderService` owns users, auth, and orders (database `users_and_orders_db`).
 - `productService` owns the product catalog and proxies a third‑party FakeStore API (database `product_db`).
 - Both services share one JWT access‑token signing secret, so an access token issued by `userOrderService` is accepted by `productService`.
 - `userOrderService` calls `productService` over HTTP using `PRODUCT_SERVICE_BASE_URL`.
+- `frontend/` contains the React + Vite client used for the live site.
 
 ## Tech stack
 
@@ -21,9 +29,11 @@ Two Spring Boot microservices behind a single Postgres instance, built around a 
 - Spring Security + `jjwt` 0.11.5 for JWT, BCrypt for password hashing
 - Spring Data JPA with Hibernate, `ddl-auto=validate`
 - Flyway for schema migrations (forward‑only)
-- PostgreSQL 16
+- React + Vite + TypeScript frontend
+- PostgreSQL locally, AWS RDS PostgreSQL in the deployed environment
 - Docker + Docker Compose for local orchestration
 - GitHub Actions for CI, Docker Hub for image hosting, EC2 + SSH for deploy
+- Nginx for serving the production frontend on EC2
 
 ## Repository layout
 
@@ -31,9 +41,12 @@ Two Spring Boot microservices behind a single Postgres instance, built around a 
 .
 ├── userOrderService/        Spring Boot service: users, auth, orders
 ├── productService/          Spring Boot service: products
+├── frontend/                React + Vite frontend
 ├── docker/postgres/         Init scripts (creates the product_db database)
 ├── docker-compose.yml       Local orchestration for all three containers
 ├── .env.example             Template for required env vars (copy to .env)
+├── PROJECT_LOG.md           Project state, deployment notes, and recovery notes
+├── REFLEKTIONSRAPPORT.md    Written reflection report for submission
 └── .github/workflows/       CI/CD per service (build, image push, EC2 deploy)
 ```
 
@@ -99,6 +112,38 @@ Useful for fast IDE‑driven dev loops.
    ```
 
 Flyway will run migrations on first start for each service.
+
+## Running the frontend
+
+The frontend lives in `frontend/`. See `frontend/README.md` for the full setup.
+
+For local development, start the backend services first, then run:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend reads backend URLs from Vite environment variables:
+
+- `VITE_USER_SERVICE_URL`
+- `VITE_PRODUCT_SERVICE_URL`
+
+For local development these usually point to `http://localhost:8080` and `http://localhost:8082`.
+
+## Deployment
+
+The current live deployment uses AWS:
+
+- `userOrderService` runs as a Docker container on one EC2 instance.
+- `productService` runs as a Docker container on a separate EC2 instance.
+- The services communicate over HTTP; in AWS they use private networking inside the VPC.
+- PostgreSQL runs in AWS RDS with two logical databases.
+- The React production build is served by Nginx on port 80.
+- GitHub Actions builds, tests, pushes Docker images to Docker Hub, and deploys to EC2 on push to `main`.
+
+Note: the current live URL uses plain HTTP because the course HTTPS requirement was removed. The EC2 instances do not use Elastic IPs, so public DNS values may change if an instance is stopped and started again.
 
 ## Database & migrations
 

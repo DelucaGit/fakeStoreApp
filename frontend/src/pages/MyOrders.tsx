@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import { ENDPOINTS } from '../api/endpoints';
 import type { OrderResponse, ProductResponse } from '../api/types';
-import { Package, Clock, DollarSign } from 'lucide-react';
+import { Package, Clock } from 'lucide-react';
 
 export const MyOrders = () => {
   const [orders, setOrders] = useState<OrderResponse[]>([]);
