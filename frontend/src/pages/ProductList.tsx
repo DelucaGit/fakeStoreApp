@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import { ENDPOINTS } from '../api/endpoints';
 import type { ProductResponse } from '../api/types';
-import { ShoppingCart, Plus, Package } from 'lucide-react';
+import { ShoppingCart, Package } from 'lucide-react';
 
 export const ProductList = () => {
   const [products, setProducts] = useState<ProductResponse[]>([]);
