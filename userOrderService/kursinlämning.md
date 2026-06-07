@@ -78,7 +78,7 @@ Utöver allt i G ska du:
 - [x] Autentisering mellan tjanster ska ske med JWT (`ProductServiceClient` skickar `Authorization: Bearer ...`; `productService` validerar access-JWT med samma hemlighet som user-order)
 
 ### Infrastruktur
-- [ ] Tjansterna ska deployas pa separata EC2-instanser (nu: **en** EC2 kor bada JAR; planerat att dela upp i tva instanser for VG)
+- [x] Tjansterna ska deployas pa separata EC2-instanser (KLART 2026-06-04: `userOrderService` kor pa `cloudstore-app`-EC2 (systemd JAR), `productService` kor pa ny `cloudstore-product`-EC2 (Docker); user-order anropar product via privat DNS i samma VPC; verifierat end-to-end med orderskapande)
 
 ### CI/CD
 CI/CD-pipelinen ska:
